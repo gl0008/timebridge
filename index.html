@@ -88,6 +88,106 @@
         </section>
         <section>
           <h2>Share</h2>
+          <p class="muted">Send this same link to everyone. Availability syncs automatically when remote storage is connected.</p>
+          <textarea id="shareBox" readonly aria-label="Shareable schedule link"></textarea>
+        </section>
+      </aside>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TimeBridge Scheduler</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="planner">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Biweekly weekend scheduling</p>
+            <h1>TimeBridge</h1>
+          </div>
+          <div class="top-actions">
+            <button id="copyLinkButton" class="icon-button" type="button" title="Copy share link" aria-label="Copy share link">
+              <span aria-hidden="true">↗</span>
+            </button>
+            <button id="resetButton" class="icon-button danger" type="button" title="Clear this schedule" aria-label="Clear this schedule">
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+        </header>
+
+        <section class="controls" aria-label="Schedule setup">
+          <label>
+            Event
+            <input id="eventName" type="text" value="Planning meeting" autocomplete="off" />
+          </label>
+          <label>
+            Your name
+            <input id="personName" type="text" placeholder="Add your name" autocomplete="name" />
+          </label>
+          <label>
+            Your timezone
+            <select id="timezoneSelect"></select>
+          </label>
+          <label>
+            Anchor timezone
+            <input id="baseTimezone" type="text" value="Philadelphia (America/New_York)" readonly />
+          </label>
+          <label>
+            Start
+            <input id="startTime" type="time" value="09:00" />
+          </label>
+          <label>
+            End
+            <select id="endTime">
+              <option value="12:00">12:00 PM</option>
+              <option value="18:00">6:00 PM</option>
+              <option value="24:00" selected>12:00 AM</option>
+            </select>
+          </label>
+          <label>
+            Slot
+            <select id="slotLength">
+              <option value="30">30 min</option>
+              <option value="60">60 min</option>
+              <option value="15">15 min</option>
+            </select>
+          </label>
+          <button id="applyButton" class="primary-button" type="button">Update grid</button>
+        </section>
+
+        <section class="status-row" aria-live="polite">
+          <div>
+            <strong id="currentPersonLabel">No participant selected</strong>
+            <span id="timezoneHint">Times are shown in your timezone.</span>
+          </div>
+          <span id="saveStatus">Saved locally</span>
+        </section>
+
+        <section class="grid-wrap" aria-label="Availability grid">
+          <div id="availabilityGrid" class="availability-grid"></div>
+        </section>
+      </section>
+
+      <aside class="side-panel">
+        <section>
+          <h2>Best times</h2>
+          <div id="bestTimes" class="best-times"></div>
+        </section>
+        <section>
+          <h2>Participants</h2>
+          <div id="participantList" class="participant-list"></div>
+        </section>
+        <section>
+          <h2>Share</h2>
           <p class="muted">Send the copied link after adding availability. The link includes this recurring schedule.</p>
           <textarea id="shareBox" readonly aria-label="Shareable schedule link"></textarea>
         </section>
