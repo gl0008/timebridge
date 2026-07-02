@@ -269,10 +269,25 @@ function participantSlots(name) {
   return new Set(state.participants[name]?.slots || []);
 }
 
+function participantEntries() {
+  return Object.values(state.participants)
+    .filter((participant) => participant?.name)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function availabilityCount(slot) {
-  return Object.values(state.participants).filter((participant) =>
+  return participantEntries().filter((participant) =>
     participant.slots.includes(slot),
   ).length;
+}
+
+function availabilityDetails(slot) {
+  const entries = participantEntries();
+  return {
+    available: entries.filter((participant) => participant.slots.includes(slot)),
+    unavailable: entries.filter((participant) => !participant.slots.includes(slot)),
+    total: entries.length,
+  };
 }
 
 function maxAvailability() {
@@ -317,9 +332,15 @@ function renderGrid() {
       }
 
       const count = availabilityCount(slot);
+      const details = availabilityDetails(slot);
       const slotCell = cell("", "grid-cell slot");
       slotCell.dataset.slot = slot;
       slotCell.dataset.count = count ? String(count) : "";
+      slotCell.dataset.available = details.available.map((participant) => participant.name).join(", ");
+      slotCell.dataset.unavailable = details.unavailable.map((participant) => participant.name).join(", ");
+      slotCell.setAttribute("tabindex", "0");
+      slotCell.setAttribute("aria-label", slotTooltipText(slot));
+      slotCell.title = slotTooltipText(slot);
       slotCell.style.setProperty("--heat", highest ? count / highest : 0);
       slotCell.classList.toggle("mine", mine.has(slot));
       slotCell.classList.toggle("best", highest > 0 && count === highest);
@@ -333,6 +354,83 @@ function cell(text, className) {
   node.className = className;
   node.textContent = text;
   return node;
+}
+
+function slotLabel(slot) {
+  const day = DAYS.find((item) => item.id === slotDay(slot));
+  return `${day?.label || slotDay(slot)} ${displayTime(slotTime(slot))}`;
+}
+
+function slotTooltipText(slot) {
+  const details = availabilityDetails(slot);
+  const available = details.available.map((participant) => participant.name).join(", ") || "No one";
+  const unavailable = details.unavailable.map((participant) => participant.name).join(", ") || "No one";
+  return `${slotLabel(slot)} ${BASE_ZONE_LABEL} time\nAvailable: ${available}\nNot available: ${unavailable}`;
+}
+
+function ensureSlotTooltip() {
+  let tooltip = document.querySelector("#slotTooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.id = "slotTooltip";
+    tooltip.className = "slot-tooltip";
+    tooltip.setAttribute("role", "status");
+    document.body.append(tooltip);
+  }
+  return tooltip;
+}
+
+function renderSlotTooltip(slot, target) {
+  const details = availabilityDetails(slot);
+  const available = details.available
+    .map((participant) => `<li>${escapeHtml(participant.name)}</li>`)
+    .join("");
+  const unavailable = details.unavailable
+    .map((participant) => `<li>${escapeHtml(participant.name)}</li>`)
+    .join("");
+  const count = details.available.length;
+  const total = details.total;
+  const tooltip = ensureSlotTooltip();
+
+  tooltip.innerHTML = `
+    <strong>${escapeHtml(slotLabel(slot))}</strong>
+    <span>${BASE_ZONE_LABEL} time · ${count}/${total || 0} available</span>
+    <div class="slot-tooltip-columns">
+      <div>
+        <b>Available</b>
+        <ul>${available || "<li>No one yet</li>"}</ul>
+      </div>
+      <div>
+        <b>Not available</b>
+        <ul>${unavailable || "<li>No one</li>"}</ul>
+      </div>
+    </div>
+  `;
+  positionSlotTooltip(tooltip, target);
+  tooltip.classList.add("visible");
+}
+
+function positionSlotTooltip(tooltip, target) {
+  const rect = target.getBoundingClientRect();
+  const margin = 12;
+  const preferredLeft = rect.right + margin;
+  const preferredTop = rect.top + window.scrollY - 12;
+  tooltip.style.left = `${preferredLeft}px`;
+  tooltip.style.top = `${preferredTop}px`;
+
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const overflowRight = tooltipRect.right + margin - window.innerWidth;
+  if (overflowRight > 0) {
+    tooltip.style.left = `${Math.max(margin, rect.left + window.scrollX - tooltipRect.width - margin)}px`;
+  }
+  const overflowBottom = tooltipRect.bottom + margin - window.innerHeight;
+  if (overflowBottom > 0) {
+    tooltip.style.top = `${Math.max(margin, preferredTop - overflowBottom)}px`;
+  }
+}
+
+function hideSlotTooltip() {
+  document.querySelector("#slotTooltip")?.classList.remove("visible");
 }
 
 function renderSidebar() {
@@ -352,19 +450,19 @@ function renderSidebar() {
         .join("")
     : `<p class="muted">Paint your available weekend times to see the strongest options.</p>`;
 
-  const participants = Object.values(state.participants);
+  const participants = participantEntries();
   el.participantList.innerHTML = participants.length
     ? participants
         .map(
           (participant) =>
-            `<div class="participant"><div><strong>${escapeHtml(participant.name)}</strong><span>${participant.timeZone}</span></div><span>${participant.slots.length}</span></div>`,
+            `<div class="participant"><div><strong>${escapeHtml(participant.name)}</strong><span>${escapeHtml(participant.timeZone || "Unknown timezone")}</span></div><span>${participant.slots.length}</span></div>`,
         )
         .join("")
     : `<p class="muted">No one has added availability yet.</p>`;
 }
 
 function participantTotal() {
-  return Object.keys(state.participants).length || 1;
+  return participantEntries().length || 1;
 }
 
 function escapeHtml(value) {
@@ -495,9 +593,33 @@ el.grid.addEventListener("pointerdown", (event) => {
 });
 
 el.grid.addEventListener("pointerover", (event) => {
+  const target = event.target.closest(".slot");
+  if (target) renderSlotTooltip(target.dataset.slot, target);
+
   if (dragMode === null || event.buttons !== 1) return;
-  const slot = slotFromEvent(event);
+  const slot = target?.dataset.slot || null;
   if (slot) setSlot(slot, dragMode);
+});
+
+el.grid.addEventListener("pointermove", (event) => {
+  const target = event.target.closest(".slot");
+  if (!target) return;
+  positionSlotTooltip(ensureSlotTooltip(), target);
+});
+
+el.grid.addEventListener("pointerout", (event) => {
+  const fromSlot = event.target.closest(".slot");
+  const toSlot = event.relatedTarget?.closest?.(".slot");
+  if (fromSlot && fromSlot !== toSlot) hideSlotTooltip();
+});
+
+el.grid.addEventListener("focusin", (event) => {
+  const target = event.target.closest(".slot");
+  if (target) renderSlotTooltip(target.dataset.slot, target);
+});
+
+el.grid.addEventListener("focusout", (event) => {
+  if (event.target.closest(".slot")) hideSlotTooltip();
 });
 
 window.addEventListener("pointerup", () => {
@@ -551,7 +673,7 @@ async function fetchRemoteState() {
 }
 
 async function saveRemoteState() {
-  const data = shareState();
+  const data = await remoteMergedState();
   const snapshot = stateSnapshot(data);
   if (snapshot === lastRemoteSnapshot) return;
 
@@ -567,8 +689,36 @@ async function saveRemoteState() {
   if (!response.ok) {
     throw new Error(`Remote save failed: ${response.status}`);
   }
+  state = normalizeState(data);
   lastRemoteSnapshot = snapshot;
+  render({ skipRemoteSave: true });
   el.saveStatus.textContent = "Synced";
+}
+
+async function remoteMergedState() {
+  const local = shareState();
+  let remote = null;
+  try {
+    remote = await fetchRemoteState();
+  } catch {
+    remote = null;
+  }
+  if (!remote) return local;
+
+  const remoteState = normalizeState(remote);
+  const currentName = participantName();
+  const mergedParticipants = { ...remoteState.participants };
+
+  Object.entries(local.participants || {}).forEach(([name, participant]) => {
+    if (name === currentName || !mergedParticipants[name]) {
+      mergedParticipants[name] = participant;
+    }
+  });
+
+  return {
+    ...local,
+    participants: mergedParticipants,
+  };
 }
 
 function scheduleRemoteSave() {
