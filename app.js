@@ -247,6 +247,11 @@ function nextDateForDay(dayId) {
 }
 
 function localEquivalent(slot, timeZone) {
+  const parts = localSlotParts(slot, timeZone);
+  return `${parts.weekday} ${parts.time}`;
+}
+
+function localSlotParts(slot, timeZone) {
   const day = slotDay(slot);
   const time = slotTime(slot);
   const sampleDate = nextDateForDay(day);
@@ -258,7 +263,14 @@ function localEquivalent(slot, timeZone) {
     minute: "2-digit",
   }).formatToParts(utcDate);
   const get = (type) => parts.find((part) => part.type === type)?.value || "";
-  return `${get("weekday")} ${get("hour")}:${get("minute")} ${get("dayPeriod")}`;
+  return {
+    weekday: get("weekday"),
+    time: `${get("hour")}:${get("minute")} ${get("dayPeriod")}`,
+  };
+}
+
+function selectedZone() {
+  return el.timezoneSelect.value || detectedZone;
 }
 
 function participantName() {
@@ -305,6 +317,7 @@ function renderGrid() {
   const name = participantName();
   const mine = name ? participantSlots(name) : new Set();
   const highest = maxAvailability();
+  const zone = selectedZone();
   const slotsByDay = new Map(DAYS.map((day) => [day.id, []]));
 
   state.slots.forEach((slot) => {
@@ -313,7 +326,7 @@ function renderGrid() {
 
   el.grid.style.setProperty("--cols", DAYS.length);
   el.grid.innerHTML = "";
-  el.grid.append(cell(`${BASE_ZONE_LABEL} time`, "grid-header"));
+  el.grid.append(cell("Your time", "grid-header"));
 
   DAYS.forEach((day) => {
     el.grid.append(cell(day.label, "grid-header"));
@@ -322,7 +335,7 @@ function renderGrid() {
   const rows = Math.max(...[...slotsByDay.values()].map((slots) => slots.length));
   for (let row = 0; row < rows; row += 1) {
     const firstSlot = [...slotsByDay.values()].find((slots) => slots[row])?.[row];
-    el.grid.append(cell(firstSlot ? displayTime(slotTime(firstSlot)) : "", "time-label"));
+    el.grid.append(cell(firstSlot ? localSlotParts(firstSlot, zone).time : "", "time-label"));
 
     DAYS.forEach((day) => {
       const slot = slotsByDay.get(day.id)[row];
@@ -357,18 +370,20 @@ function cell(text, className) {
 }
 
 function slotLabel(slot) {
-  const day = DAYS.find((item) => item.id === slotDay(slot));
-  return `${day?.label || slotDay(slot)} ${displayTime(slotTime(slot))}`;
+  const local = localSlotParts(slot, selectedZone());
+  return `${local.weekday} ${local.time}`;
 }
 
 function slotTooltipText(slot) {
   const details = availabilityDetails(slot);
+  const day = DAYS.find((item) => item.id === slotDay(slot));
   const available = details.available.map((participant) => participant.name).join(", ") || "No one";
   const unavailable = details.unavailable.map((participant) => participant.name).join(", ") || "No one";
-  return `${slotLabel(slot)} ${BASE_ZONE_LABEL} time\nAvailable: ${available}\nNot available: ${unavailable}`;
+  return `${slotLabel(slot)} in ${selectedZone()}\n${day?.label || slotDay(slot)} ${displayTime(slotTime(slot))} ${BASE_ZONE_LABEL} time\nAvailable: ${available}\nNot available: ${unavailable}`;
 }
 
 function ensureSlotTooltip() {
+  ensureSlotTooltipStyles();
   let tooltip = document.querySelector("#slotTooltip");
   if (!tooltip) {
     tooltip = document.createElement("div");
@@ -378,6 +393,59 @@ function ensureSlotTooltip() {
     document.body.append(tooltip);
   }
   return tooltip;
+}
+
+function ensureSlotTooltipStyles() {
+  if (document.querySelector("#slotTooltipStyles")) return;
+  const style = document.createElement("style");
+  style.id = "slotTooltipStyles";
+  style.textContent = `
+    .slot-tooltip {
+      position: absolute;
+      z-index: 20;
+      display: none;
+      width: min(320px, calc(100vw - 24px));
+      padding: 12px;
+      border: 1px solid rgba(17, 93, 80, 0.28);
+      border-radius: 8px;
+      background: #fbfffd;
+      box-shadow: 0 18px 46px rgba(26, 42, 38, 0.2);
+      color: var(--ink);
+      pointer-events: none;
+    }
+    .slot-tooltip.visible {
+      display: grid;
+      gap: 8px;
+    }
+    .slot-tooltip strong {
+      font-size: 0.92rem;
+    }
+    .slot-tooltip span {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .slot-tooltip-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .slot-tooltip b {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--accent-strong);
+      font-size: 0.76rem;
+    }
+    .slot-tooltip ul {
+      display: grid;
+      gap: 3px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+  `;
+  document.head.append(style);
 }
 
 function renderSlotTooltip(slot, target) {
@@ -394,7 +462,7 @@ function renderSlotTooltip(slot, target) {
 
   tooltip.innerHTML = `
     <strong>${escapeHtml(slotLabel(slot))}</strong>
-    <span>${BASE_ZONE_LABEL} time · ${count}/${total || 0} available</span>
+    <span>${escapeHtml(selectedZone())} · ${escapeHtml(slotTooltipAnchor(slot))} ${BASE_ZONE_LABEL} time · ${count}/${total || 0} available</span>
     <div class="slot-tooltip-columns">
       <div>
         <b>Available</b>
@@ -433,8 +501,13 @@ function hideSlotTooltip() {
   document.querySelector("#slotTooltip")?.classList.remove("visible");
 }
 
+function slotTooltipAnchor(slot) {
+  const day = DAYS.find((item) => item.id === slotDay(slot));
+  return `${day?.label || slotDay(slot)} ${displayTime(slotTime(slot))}`;
+}
+
 function renderSidebar() {
-  const zone = el.timezoneSelect.value || detectedZone;
+  const zone = selectedZone();
   const entries = state.slots
     .map((slot) => ({ slot, count: availabilityCount(slot) }))
     .filter((entry) => entry.count > 0)
@@ -445,7 +518,7 @@ function renderSidebar() {
     ? entries
         .map((entry) => {
           const day = DAYS.find((item) => item.id === slotDay(entry.slot));
-          return `<div class="best-time"><div><strong>${day.label} ${displayTime(slotTime(entry.slot))}</strong><span>${BASE_ZONE_LABEL} time · ${localEquivalent(entry.slot, zone)} in your timezone</span></div><span>${entry.count}/${participantTotal()}</span></div>`;
+          return `<div class="best-time"><div><strong>${escapeHtml(localEquivalent(entry.slot, zone))}</strong><span>${day.label} ${displayTime(slotTime(entry.slot))} ${BASE_ZONE_LABEL} time</span></div><span>${entry.count}/${participantTotal()}</span></div>`;
         })
         .join("")
     : `<p class="muted">Paint your available weekend times to see the strongest options.</p>`;
@@ -505,7 +578,7 @@ function renderStatus() {
     ? `Editing availability for ${name}`
     : "Add your name to paint availability";
   const syncText = REMOTE_ENABLED ? "Synced for everyone." : "Copy the updated share link after editing.";
-  el.timezoneHint.textContent = `Grid times are fixed to ${BASE_ZONE_LABEL} time. Your timezone is ${el.timezoneSelect.value || detectedZone}. ${syncText}`;
+  el.timezoneHint.textContent = `The schedule is anchored to ${BASE_ZONE_LABEL} 9:00 AM-12:00 AM. The grid is shown in ${selectedZone()}. ${syncText}`;
 }
 
 function render(options = {}) {
