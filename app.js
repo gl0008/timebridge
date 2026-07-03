@@ -25,7 +25,6 @@ const el = {
   slotLength: document.querySelector("#slotLength"),
   applyButton: document.querySelector("#applyButton"),
   grid: document.querySelector("#availabilityGrid"),
-  bestTimes: document.querySelector("#bestTimes"),
   participantList: document.querySelector("#participantList"),
   copyLinkButton: document.querySelector("#copyLinkButton"),
   resetButton: document.querySelector("#resetButton"),
@@ -244,11 +243,6 @@ function nextDateForDay(dayId) {
   const baseDate = new Date(Date.UTC(Number(get("year")), Number(get("month")) - 1, Number(get("day"))));
   baseDate.setUTCDate(baseDate.getUTCDate() + delta);
   return baseDate.toISOString().slice(0, 10);
-}
-
-function localEquivalent(slot, timeZone) {
-  const parts = localSlotParts(slot, timeZone);
-  return `${parts.weekday} ${parts.time}`;
 }
 
 function localSlotParts(slot, timeZone) {
@@ -507,22 +501,6 @@ function slotTooltipAnchor(slot) {
 }
 
 function renderSidebar() {
-  const zone = selectedZone();
-  const entries = state.slots
-    .map((slot) => ({ slot, count: availabilityCount(slot) }))
-    .filter((entry) => entry.count > 0)
-    .sort((a, b) => b.count - a.count || a.slot.localeCompare(b.slot))
-    .slice(0, 6);
-
-  el.bestTimes.innerHTML = entries.length
-    ? entries
-        .map((entry) => {
-          const day = DAYS.find((item) => item.id === slotDay(entry.slot));
-          return `<div class="best-time"><div><strong>${escapeHtml(localEquivalent(entry.slot, zone))}</strong><span>${day.label} ${displayTime(slotTime(entry.slot))} ${BASE_ZONE_LABEL} time</span></div><span>${entry.count}/${participantTotal()}</span></div>`;
-        })
-        .join("")
-    : `<p class="muted">Paint your available weekend times to see the strongest options.</p>`;
-
   const participants = participantEntries();
   el.participantList.innerHTML = participants.length
     ? participants
@@ -532,10 +510,6 @@ function renderSidebar() {
         )
         .join("")
     : `<p class="muted">No one has added availability yet.</p>`;
-}
-
-function participantTotal() {
-  return participantEntries().length || 1;
 }
 
 function escapeHtml(value) {
